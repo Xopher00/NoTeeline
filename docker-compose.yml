@@ -1,0 +1,17 @@
+services:
+  noteeline:
+    build: .
+    ports:
+      - "3000:3000"
+      - "4000:4000"
+      - "8000:8000"
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+      - whisper-cache:/root/.cache
+    environment:
+      - LOCAL_MODEL=llama3.1:8b
+
+volumes:
+  ollama-data:
+  whisper-cache:

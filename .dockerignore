@@ -1,0 +1,9 @@
+.git
+node_modules
+Backend/node_modules
+Backend/whisper-venv
+Frontend/node_modules
+Frontend/dist
+DataAnalysis
+Assets
+*.mp4
