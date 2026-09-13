@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { 
-  Button, 
+import {
+  Button,
   useDisclosure,
   Modal,
   ModalOverlay,
@@ -14,14 +14,16 @@ import {
   Input,
   useToast,
   Checkbox,
+  Box,
+  Text,
  } from '@chakra-ui/react'
 import { DeleteIcon } from '@chakra-ui/icons'
+import { MicIcon, ClockOutlineIcon, PlusIcon } from './components/Icons'
 
 import Onboarding from './components/Onboarding'
 import CornellNote from './components/CornellNote'
 
 import { Note_t, useNoteStore } from './state/noteStore'
-import logo from './assets/images/logo.png'
 import './App.css'
 
 const App = () => {
@@ -139,37 +141,65 @@ const App = () => {
 
   return (
     <div className='note-ui-root'>
-      <div className='sidebar'>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#54432C', }}>
-          <img src={logo} alt='Logo' className='logo' />
-          <header>NoTeeline</header>
-        </div>
-        <ul>
-          <a 
-            onClick={() => handleOption('onboarding')} 
-            className={active === 'onboarding' ? 'active-tab' : ''}
+      <Box sx={{ position: 'fixed', top: 0, left: 0, bottom: 0, display: 'flex', flexDirection: 'column', width: '248px', flexShrink: 0, background: 'var(--sidebar-bg)', padding: '20px 14px', gap: '18px', }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 6px', }}>
+          <Box sx={{ width: '30px', height: '30px', borderRadius: '8px', background: 'var(--record)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, }}>
+            <MicIcon size={16} color='#fff' />
+          </Box>
+          <Text sx={{ fontSize: '16px', fontWeight: 700, color: 'var(--sidebar-text)', letterSpacing: '-0.01em', }}>NoTeeline</Text>
+        </Box>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1, overflowY: 'auto', }}>
+          <Text sx={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--sidebar-text-dim)', padding: '8px 10px 4px', }}>Notes</Text>
+
+          <Box
+            as='div'
+            onClick={() => handleOption('onboarding')}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer',
+              background: active === 'onboarding' ? 'var(--sidebar-item-active)' : 'transparent',
+              color: active === 'onboarding' ? 'var(--sidebar-text)' : 'var(--sidebar-text-dim)',
+              fontWeight: active === 'onboarding' ? 500 : 400,
+            }}
           >
-            <li style={{ cursor: 'pointer', }}>Onboarding Session</li>
-          </a>
+            <ClockOutlineIcon size={15} />
+            Onboarding Session
+          </Box>
+
           {notes.map((note, index) => (
-            <a 
-              key={index} 
-              className={active === note.name ? 'active-tab' : ''}
-              style={{ display: 'flex', justifyContent: 'space-evenly', alignItems: 'center', }} 
+            <Box
+              as='div'
+              key={index}
               onClick={() => handleOption(note.name)}
+              sx={{
+                display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 10px', borderRadius: '8px', fontSize: '13px', cursor: 'pointer',
+                background: active === note.name ? 'var(--sidebar-item-active)' : 'transparent',
+                color: active === note.name ? 'var(--sidebar-text)' : 'var(--sidebar-text-dim)',
+                fontWeight: active === note.name ? 500 : 400,
+              }}
             >
-              <li 
-                style={{ display: 'inline', cursor: 'pointer', }}
-              >
-                {note.name}
-              </li>
-              <DeleteIcon style={{ cursor: 'pointer', }} onClick={(event) => {event.stopPropagation(); deleteNote(note)}} />
-            </a>
+              <MicIcon size={15} color='currentColor' />
+              <Box as='span' sx={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', }}>{note.name}</Box>
+              <DeleteIcon
+                boxSize={3}
+                sx={{ cursor: 'pointer', flexShrink: 0, }}
+                onClick={(event) => { event.stopPropagation(); deleteNote(note) }}
+              />
+            </Box>
           ))}
-        </ul>
-        <footer>
-          <Button color='#fff' onClick={onOpen} style={{ background: '#566949', }}>Add Note</Button>
-        </footer>
+        </Box>
+
+        <Button
+          onClick={onOpen}
+          sx={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '9px', borderRadius: '8px',
+            border: '1px solid var(--border)', background: 'transparent', color: 'var(--sidebar-text)', fontSize: '13px', fontWeight: 500, height: 'auto',
+          }}
+        >
+          <PlusIcon size={14} color='currentColor' />
+          New Note
+        </Button>
+
         <Modal
               isOpen={isOpen}
               onClose={onClose}
@@ -196,7 +226,7 @@ const App = () => {
               </ModalFooter>
           </ModalContent>
         </Modal>
-      </div>
+      </Box>
       <div className='note-content'>
         {active === 'onboarding' && <Onboarding />}
         {active !== '' && active !== 'onboarding' && <CornellNote name={active} note={selectedNote} />}

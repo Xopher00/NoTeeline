@@ -1,18 +1,13 @@
 /* eslint-disable */
 
 import React, { useState, useEffect, useRef, } from 'react'
-import { Grid, GridItem, Tag, TagRightIcon, TagLabel, Button, InputGroup, Input, InputRightElement, useToast, theme, keyframes } from '@chakra-ui/react'
+import { Button, useToast, keyframes, Drawer, DrawerOverlay, DrawerContent, DrawerHeader, DrawerBody, DrawerCloseButton, IconButton, Box, Text } from '@chakra-ui/react'
 import {
-    SunIcon,
-    ChevronRightIcon,
-    ChevronLeftIcon,
     TimeIcon,
-    DragHandleIcon,
-    CalendarIcon,
-    ArrowBackIcon,
-    ArrowForwardIcon,
     EditIcon,
+    ViewIcon,
 } from '@chakra-ui/icons'
+import { PlusIcon, ExpandArrowsIcon, ThreeLinesIcon, DocumentIcon, QuestionCircleIcon } from './Icons'
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd"
 
 import { NotePoint, TranscriptLine, useNoteStore, Note_t } from '../state/noteStore'
@@ -62,9 +57,11 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
     const [isLink, setIsLink] = useState<boolean>(false)
     const [transcription, setTranscription] = useState<TranscriptLine[]>([]) //yt transcription
     const [playerTime, setPlayerTime] = useState<number>(0) //time of the yt player at any instant
+    const [highlightedUtc, setHighlightedUtc] = useState<number>(0) //utc_time of the most recently added point, for a brief highlight
+    const [transcriptDrawerOpen, setTranscriptDrawerOpen] = useState<boolean>(false)
+    const [showQuizDrawer, setShowQuizDrawer] = useState<boolean>(false)
+    const [showSummaryDrawer, setShowSummaryDrawer] = useState<boolean>(false)
     const [, setPause] = useState<boolean>(false)
-    const [expandSection, setExpandSection] = useState<boolean>(true) //show only note section by default
-    const [expandQuizSection, setExpandQuizSection] = useState<boolean>(false)
     const [dragging, setDragging] = useState(false)
     const [draggingIndex, setDraggingIndex] = useState<number>(-1)
     const [initialY, setInitialY] = useState(0)
@@ -83,6 +80,17 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
 
     const js_sleep = (ms: number | undefined) => {
         return new Promise((resolve) => setTimeout(resolve, ms))
+    }
+
+    const pulseAnimation = keyframes`
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(0.85); }
+    `
+
+    const formatElapsed = (sec: number) => {
+        const m = Math.floor(sec / 60).toString().padStart(2, '0')
+        const s = Math.floor(sec % 60).toString().padStart(2, '0')
+        return `${m}:${s}`
     }
 
     const OPEN_AI_KEY = JSON.parse(localStorage.getItem('gptKey'))
@@ -245,17 +253,7 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
         setPauseCount(0)
         setQuizzes([])
 
-        if (note?.ytId !== '') {
-            setEmbedId(note.ytId)
-            setIsLink(true)
-
-            if (note?.transcription.length === 0) {
-                getYoutubeTranscription(note.ytId);
-            }
-        } else {
-            setEmbedId('')
-            setIsLink(false)
-        }
+        setIsLink(false)
 
         if (note?.transcription) {
             setTranscription(note.transcription)
@@ -345,6 +343,11 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
             pointStreams.push('')
             localStorage.setItem('pointStreams', JSON.stringify(pointStreams))
             setNewPoint('')
+
+            setHighlightedUtc(time_now)
+            setTimeout(() => {
+                setHighlightedUtc((prev) => (prev === time_now ? 0 : prev))
+            }, 1000)
         }
     }
 
@@ -388,12 +391,14 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
     }
 
     let recordingStartMs = 0
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null)
 
     const startLectureRecording = () => {
         navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             setIsLink(true)
             recordingStartMs = Date.now()
             const mediaRecorder = new MediaRecorder(stream)
+            mediaRecorderRef.current = mediaRecorder
 
             mediaRecorder.ondataavailable = (event: BlobEvent) => {
                 if (event.data.size === 0) return
@@ -453,6 +458,13 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
 
     const stopVideo = () => {
         window.clearTimeout(timeoutHandle)
+        const recorder = mediaRecorderRef.current
+        if (recorder) {
+            recorder.stop()
+            recorder.stream.getTracks().forEach(track => track.stop())
+            mediaRecorderRef.current = null
+        }
+        setIsLink(false)
     }
 
     const countPause = () => {
@@ -591,13 +603,6 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
         }
     }
 
-    const toggleExpandSection = () => {
-        setExpandSection(!expandSection)
-    }
-
-    const toggleExpandQuizSection = () => {
-        setExpandQuizSection(!expandQuizSection)
-    }
 
     const reorderThemes = (list: { type: string, val: string }[], startIndex: number, endIndex: number) => {
         const result = Array.from(list)
@@ -1105,6 +1110,7 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
             summary_t: summary,
             summary_p: summary_p,
             url: url,
+            raw_transcript: [...transcription].sort((a, b) => a.offset - b.offset),
         }
         userLog.editHistory = newPoints
 
@@ -1126,389 +1132,327 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
     }
 
     return (
-        <Grid
-            h='137%'
-            w='100%'
-            templateRows='repeat(18, 1fr)'
-            templateColumns='repeat(4, 1fr)'
-            sx={{ overflowX: 'hidden', }}
-        >
-            {/* YouTube video player */}
-            {/* <button onClick={testDrive}>Test</button> */}
-            <GridItem rowSpan={6} colSpan={4} sx={{ borderBottom: '1px solid #000', }}>
-                {
-                    !isLink ?
-                        <Button
-                            style={{ marginBottom: '5vh', marginLeft: '25%', marginTop: '1%', }}
-                            colorScheme='red'
-                            onClick={startLectureRecording}
-                        >
-                            Start Recording Lecture
-                        </Button>
+        <>
+        <Drawer isOpen={transcriptDrawerOpen} placement='right' onClose={() => setTranscriptDrawerOpen(false)} size='sm'>
+            <DrawerOverlay />
+            <DrawerContent>
+                <DrawerCloseButton />
+                <DrawerHeader borderBottomWidth='1px'>Transcript</DrawerHeader>
+                <DrawerBody sx={{ padding: '16px', }}>
+                    {transcription.length === 0 ?
+                        <Text sx={{ fontSize: '14px', color: 'var(--text-dim)', }}>
+                            No transcript recorded yet — it fills in here as you record a lecture.
+                        </Text>
                         :
-                        <Button
-                            style={{ marginBottom: '5vh', marginLeft: '25%', marginTop: '1%', }}
-                            colorScheme='gray'
-                            onClick={stopVideo}
-                        >
-                            Stop Recording
-                        </Button>
-                }
-            </GridItem>
-            {
-                expandQuizSection ?
-                    <GridItem rowSpan={7} colSpan={4} sx={{ padding: '10px', overflowY: 'auto', borderRight: '1px solid #000', }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', }}>
-                            {showQuiz !== 0 ?
-                                <div></div> :
-                                <Tag size='lg' variant='solid' colorScheme='teal' sx={{ cursor: 'pointer', }} onClick={handleQuiz}>
-                                    <TagLabel>Cue Questions</TagLabel>
-                                    <TagRightIcon as={SunIcon} />
-                                </Tag>
-                            }
-                            <ChevronLeftIcon w={8} h={8} color="tomato" sx={{ cursor: 'pointer', }} onClick={toggleExpandQuizSection} />
-                        </div>
-                        <br />
-                        {
-                            showQuiz === 2 ?
-                                quizzes && quizzes.length > 0 ?
-                                    <Quiz quizzes={quizzes} quizInfo={quizInfo} changeQuizInfo={changeQuizInfo} />
-                                    :
-                                    <p>No quizzes to show !</p>
-                                :
-                                showQuiz === 1 ?
-                                    <p>Loading quizzes...</p>
-                                    :
-                                    <p>No quizzes to show !</p>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: '14px', }}>
+                            {[...transcription].sort((a, b) => a.offset - b.offset).map((line, idx) => (
+                                <Box key={idx}>
+                                    <Text sx={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', ui-monospace, monospace", marginBottom: '2px', }}>
+                                        {formatElapsed(line.offset)}
+                                    </Text>
+                                    <Text sx={{ fontSize: '14px', lineHeight: '1.5', color: 'var(--text)', }}>
+                                        {line.text}
+                                    </Text>
+                                </Box>
+                            ))}
+                        </Box>
+                    }
+                </DrawerBody>
+            </DrawerContent>
+        </Drawer>
+
+        <Drawer isOpen={showQuizDrawer} placement='right' onClose={() => setShowQuizDrawer(false)} size='sm'>
+            <DrawerOverlay />
+            <DrawerContent>
+                <DrawerCloseButton />
+                <DrawerHeader borderBottomWidth='1px'>Cue Questions</DrawerHeader>
+                <DrawerBody sx={{ padding: '16px', }}>
+                    {showQuiz === 0 &&
+                        <Button colorScheme='teal' onClick={handleQuiz}>Generate Quiz</Button>
+                    }
+                    {showQuiz === 1 && <p>Loading quizzes...</p>}
+                    {showQuiz === 2 && (
+                        quizzes && quizzes.length > 0 ?
+                            <Quiz quizzes={quizzes} quizInfo={quizInfo} changeQuizInfo={changeQuizInfo} />
+                            :
+                            <p>No quizzes to show !</p>
+                    )}
+                </DrawerBody>
+            </DrawerContent>
+        </Drawer>
+
+        <Drawer isOpen={showSummaryDrawer} placement='right' onClose={() => setShowSummaryDrawer(false)} size='sm'>
+            <DrawerOverlay />
+            <DrawerContent>
+                <DrawerCloseButton />
+                <DrawerHeader borderBottomWidth='1px'>Summary</DrawerHeader>
+                <DrawerBody sx={{ padding: '16px', }}>
+                    {!showSummary && <Button colorScheme='cyan' onClick={noteTranscriptSummary}>Generate Summary</Button>}
+                    {showSummary &&
+                        (micronote ?
+                            <Text sx={{ fontSize: '14px', lineHeight: '1.6', }}>{summary_p}</Text>
+                            :
+                            <Text sx={{ fontSize: '14px', lineHeight: '1.6', }}>{summary}</Text>)
+                    }
+                </DrawerBody>
+            </DrawerContent>
+        </Drawer>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, height: '100vh', background: 'var(--bg)', }}>
+            {/* Topbar */}
+            <Box sx={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '16px 28px', borderBottom: '1px solid var(--border)', flexShrink: 0, gap: '20px',
+            }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0, }}>
+                    <Text sx={{ fontSize: '17px', fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', }}>
+                        {newTitle}
+                    </Text>
+                    {isLink &&
+                        <Text sx={{ fontSize: '12px', color: 'var(--text-dim)', background: 'var(--surface-alt)', padding: '3px 8px', borderRadius: '6px', fontFamily: "'JetBrains Mono', ui-monospace, monospace", flexShrink: 0, }}>
+                            {formatElapsed(playerTime)}
+                        </Text>
+                    }
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '8px', }}>
+                        {micronote &&
+                            <Button
+                                onClick={testDrive}
+                                sx={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12.5px', fontWeight: 500, height: 'auto', }}
+                            >
+                                <ExpandArrowsIcon size={14} />
+                                {expandButtonToggle ? 'Reduce' : 'Expand'}
+                            </Button>
                         }
-                    </GridItem>
-                    :
-                    expandSection || !micronote ?
-                        <GridItem rowSpan={7} colSpan={4} sx={{ padding: '3px', paddingTop: '0', overflowY: 'auto', }}>
-                            <div style={{ paddingTop: '1px', position: 'sticky', top: 0, zIndex: 1, background: '#fff', }}>
-                                {micronote && <ChevronRightIcon w={8} h={8} color="tomato" sx={{ cursor: 'pointer', }} onClick={toggleExpandSection} />}
-                                {
-                                    micronote &&
-                                    <Tag size='lg' variant='solid' colorScheme='yellow' sx={{ marginLeft: '1px', cursor: 'pointer', }} onClick={testDrive}>
-                                        <TagLabel>{expandButtonToggle ? 'Reduce' : 'Expand'}</TagLabel>
-                                        <TagRightIcon w={3} as={ArrowBackIcon} />
-                                        <TagRightIcon w={3} as={ArrowForwardIcon} />
-                                    </Tag>
-                                }
-                                {
-                                    micronote && (
-                                        themeOrTime === 'theme' ?
-                                            <Tag size='lg' variant='solid' colorScheme='red' sx={{ marginLeft: '1px', cursor: 'pointer', }} onClick={handleTheme}>
-                                                <TagLabel>Order by Theme</TagLabel>
-                                                <TagRightIcon as={DragHandleIcon} />
-                                            </Tag>
-                                            :
-                                            <Tag size='lg' variant='solid' colorScheme='green' sx={{ marginLeft: '1px', marginBottom: '1vh', cursor: 'pointer', }} onClick={handleSort}>
-                                                <TagLabel>Order by Time</TagLabel>
-                                                <TagRightIcon as={TimeIcon} />
-                                            </Tag>
-                                    )
-                                }
-                                {/* <Tag size='lg' variant='solid' colorScheme='blue' sx={{ padding: '0', marginLeft: '1px', marginBottom: '1vh', cursor: 'pointer', }} onClick={handleDownload}>
-                            <TagRightIcon as={DownloadIcon} />
-                        </Tag> */}
-                            </div>
-                            {themeOrTime !== 'time' ?
-                                <DragDropContext onDragEnd={onDragEnd}>
-                                    <Droppable droppableId="droppable">
-                                        {(provided: any) => (
-                                            <div
-                                                {...provided.droppableProps}
-                                                ref={provided.innerRef}
-                                            // style={getListStyle(snapshot.isDraggingOver)}
-                                            >
-                                                {bulletPoints.map((bulletPoint, index) => (
-                                                    <Draggable key={bulletPoint.id} draggableId={bulletPoint.id} index={index}>
-                                                        {(provided: any, snapshot: any) => (
-                                                            <div
-                                                                ref={provided.innerRef}
-                                                                {...provided.draggableProps}
-                                                                {...provided.dragHandleProps}
-                                                                style={getBulletPointStyle(
-                                                                    snapshot.isDragging,
-                                                                    provided.draggableProps.style
-                                                                )}
-                                                                onContextMenu={handleContextMenu}
-                                                                onMouseDown={(e) => handleMouseDown(e, index)}
-                                                                onMouseUp={handleMouseUp}
-                                                            >
-                                                                {
-                                                                    !bulletPoint.editable ?
-                                                                        <BulletPoint
-                                                                            key={index}
-                                                                            index={index}
-                                                                            expand={bulletPoint.expand}
-                                                                            history={bulletPoint.history}
-                                                                            created_at={bulletPoint.created_at}
-                                                                            editPoint={editPoint}
-                                                                            state={bulletPoint.state}
-                                                                            tempString={bulletPoint.tempString}
-                                                                        />
-                                                                        :
-                                                                        <textarea
-                                                                            // type='text'
-                                                                            defaultValue={bulletPoint.point}
-                                                                            className='note-input'
-                                                                            onChange={(e) => changeEditPoint(index, e.target.value)}
-                                                                            onKeyDown={event => updateEditPoint(index, event)}
-                                                                            rows={Math.max(Math.ceil(bulletPoint.point.length / 200), 1)}
-                                                                        />
-                                                                }
-                                                            </div>
-                                                        )}
-                                                    </Draggable>
-                                                ))}
-                                                {provided.placeholder}
-                                            </div>
-                                        )}
-                                    </Droppable>
-                                </DragDropContext>
+                        {micronote && (
+                            themeOrTime === 'theme' ?
+                                <Button
+                                    onClick={handleTheme}
+                                    sx={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12.5px', fontWeight: 500, height: 'auto', }}
+                                >
+                                    <ThreeLinesIcon size={14} />
+                                    Theme
+                                </Button>
                                 :
-                                <DragDropContext onDragEnd={onDrageEndThemes}>
-                                    <Droppable droppableId="droppable">
-                                        {(provided: any) => (
-                                            <div
-                                                {...provided.droppableProps}
-                                                ref={provided.innerRef}
-                                            // style={getListStyle(snapshot.isDraggingOver)}
-                                            >
-                                                {themes.map((theme: any, index: any) => (
-                                                    <Draggable key={theme['val']} draggableId={theme['val']} index={index}>
-                                                        {(provided: any, snapshot: any) => (
-                                                            <div
-                                                                ref={provided.innerRef}
-                                                                {...provided.draggableProps}
-                                                                {...provided.dragHandleProps}
-                                                                style={getBulletPointStyle(
-                                                                    snapshot.isDragging,
-                                                                    provided.draggableProps.style
-                                                                )}
-                                                                onContextMenu={handleContextMenu}
-                                                                onMouseDown={(e) => handleMouseDown(e, index)}
-                                                                onMouseUp={handleMouseUp}
-                                                            >
-                                                                {theme['type'] === 'topic' ?
-                                                                    !theme['editable'] ?
-                                                                        <h4 style={{ color: '#000', fontWeight: 'bold', }}>
-                                                                            {theme['val']} <EditIcon w={4} color='green.500' style={{ cursor: 'pointer', }} onClick={() => editTheme(index)} />
-                                                                        </h4>
-                                                                        :
-                                                                        <input
-                                                                            type='text'
-                                                                            defaultValue={theme['val']}
-                                                                            onChange={(e) => changeTheme(index, e.target.value)}
-                                                                            onKeyDown={(e) => stopThemeEdit(e, index)}
-                                                                        />
-                                                                    :
-                                                                    <p>{theme['val']}</p>
-                                                                }
-                                                            </div>
+                                <Button
+                                    onClick={handleSort}
+                                    sx={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12.5px', fontWeight: 500, height: 'auto', }}
+                                >
+                                    <TimeIcon boxSize={3.5} />
+                                    Time
+                                </Button>
+                        )}
+                        <Button
+                            onClick={() => setShowSummaryDrawer(true)}
+                            sx={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12.5px', fontWeight: 500, height: 'auto', }}
+                        >
+                            <DocumentIcon size={14} />
+                            Summary
+                        </Button>
+                        <Button
+                            onClick={() => setShowQuizDrawer(true)}
+                            sx={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12.5px', fontWeight: 500, height: 'auto', }}
+                        >
+                            <QuestionCircleIcon size={14} />
+                            Quiz
+                        </Button>
+                        <IconButton
+                            aria-label='View transcript'
+                            icon={<ViewIcon />}
+                            variant='outline'
+                            onClick={() => setTranscriptDrawerOpen(true)}
+                        />
+                    </Box>
+
+                    {
+                        !isLink ?
+                            <Button colorScheme='red' borderRadius='9px' onClick={startLectureRecording}>
+                                Start Recording
+                            </Button>
+                            :
+                            <Button colorScheme='gray' borderRadius='9px' onClick={stopVideo}>
+                                Stop Recording
+                            </Button>
+                    }
+                </Box>
+            </Box>
+
+            {/* Content row */}
+            <Box sx={{ display: 'flex', flex: 1, minHeight: 0, }}>
+
+                {/* Notes column */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1.4, minWidth: 0, overflowY: 'auto', padding: '22px 28px', }}>
+                    {themeOrTime !== 'time' ?
+                        <DragDropContext onDragEnd={onDragEnd}>
+                            <Droppable droppableId="droppable">
+                                {(provided: any) => (
+                                    <div
+                                        {...provided.droppableProps}
+                                        ref={provided.innerRef}
+                                    >
+                                        {bulletPoints.map((bulletPoint, index) => (
+                                            <Draggable key={bulletPoint.id} draggableId={bulletPoint.id} index={index}>
+                                                {(provided: any, snapshot: any) => (
+                                                    <div
+                                                        ref={provided.innerRef}
+                                                        {...provided.draggableProps}
+                                                        {...provided.dragHandleProps}
+                                                        style={{
+                                                            ...getBulletPointStyle(
+                                                                snapshot.isDragging,
+                                                                provided.draggableProps.style
+                                                            ),
+                                                            display: 'flex',
+                                                            padding: '10px 12px',
+                                                            borderRadius: '8px',
+                                                            margin: '0 -12px',
+                                                            background: bulletPoint.utc_time === highlightedUtc ? 'var(--highlight-bg)' : 'transparent',
+                                                            boxShadow: bulletPoint.utc_time === highlightedUtc ? 'inset 0 0 0 1px var(--highlight-border)' : 'none',
+                                                            transition: 'background 900ms ease, box-shadow 900ms ease',
+                                                        }}
+                                                        onContextMenu={handleContextMenu}
+                                                        onMouseDown={(e) => handleMouseDown(e, index)}
+                                                        onMouseUp={handleMouseUp}
+                                                    >
+                                                        {
+                                                            !bulletPoint.editable ?
+                                                                <BulletPoint
+                                                                    key={index}
+                                                                    index={index}
+                                                                    expand={bulletPoint.expand}
+                                                                    history={bulletPoint.history}
+                                                                    created_at={bulletPoint.created_at}
+                                                                    editPoint={editPoint}
+                                                                    state={bulletPoint.state}
+                                                                    tempString={bulletPoint.tempString}
+                                                                />
+                                                                :
+                                                                <textarea
+                                                                    defaultValue={bulletPoint.point}
+                                                                    className='note-input'
+                                                                    onChange={(e) => changeEditPoint(index, e.target.value)}
+                                                                    onKeyDown={event => updateEditPoint(index, event)}
+                                                                    rows={Math.max(Math.ceil(bulletPoint.point.length / 200), 1)}
+                                                                />
+                                                        }
+                                                    </div>
+                                                )}
+                                            </Draggable>
+                                        ))}
+                                        {provided.placeholder}
+                                    </div>
+                                )}
+                            </Droppable>
+                        </DragDropContext>
+                        :
+                        <DragDropContext onDragEnd={onDrageEndThemes}>
+                            <Droppable droppableId="droppable">
+                                {(provided: any) => (
+                                    <div
+                                        {...provided.droppableProps}
+                                        ref={provided.innerRef}
+                                    >
+                                        {themes.map((theme: any, index: any) => (
+                                            <Draggable key={theme['val']} draggableId={theme['val']} index={index}>
+                                                {(provided: any, snapshot: any) => (
+                                                    <div
+                                                        ref={provided.innerRef}
+                                                        {...provided.draggableProps}
+                                                        {...provided.dragHandleProps}
+                                                        style={getBulletPointStyle(
+                                                            snapshot.isDragging,
+                                                            provided.draggableProps.style
                                                         )}
-                                                    </Draggable>
-                                                ))}
-                                                {provided.placeholder}
-                                            </div>
-                                        )}
-                                    </Droppable>
-                                </DragDropContext>
-                            }
-                            <input
-                                type='text'
-                                placeholder='Write a point...'
-                                className='note-input'
-                                value={newPoint}
-                                onChange={(e) => setNewPoint(e.target.value)}
-                                onKeyDown={event => handleKeyDown(event)}
-                            />
-                        </GridItem>
-                        :
-                        <>
-                            <GridItem rowSpan={7} colSpan={2} sx={{ padding: '2px', overflowY: 'auto', borderRight: '1px solid #000', }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', }}>
-                                    {showQuiz !== 0 ?
-                                        <div></div> :
-                                        <Tag size='lg' variant='solid' colorScheme='teal' sx={{ cursor: 'pointer', }} onClick={handleQuiz}>
-                                            <TagLabel>Cue Questions</TagLabel>
-                                            <TagRightIcon as={SunIcon} />
-                                        </Tag>
-                                    }
-                                    <ChevronLeftIcon w={8} h={8} color="tomato" sx={{ cursor: 'pointer', }} onClick={toggleExpandSection} />
-                                </div>
-                                <br />
-                                {
-                                    showQuiz === 2 ?
-                                        quizzes && quizzes.length > 0 ?
-                                            <Quiz quizzes={quizzes} quizInfo={quizInfo} changeQuizInfo={changeQuizInfo} />
-                                            :
-                                            <p>No quizzes to show !</p>
-                                        :
-                                        showQuiz === 1 ?
-                                            <p>Loading quizzes...</p>
-                                            :
-                                            <p>No quizzes to show !</p>
-                                }
-                            </GridItem>
-                            <GridItem rowSpan={5} colSpan={2} sx={{ padding: '2px', paddingTop: '0', overflowY: 'auto', }}>
-                                <div style={{ paddingTop: '1px', position: 'sticky', top: 0, zIndex: 1, background: '#fff', }}>
-                                    <ChevronRightIcon w={8} h={8} color="tomato" sx={{ cursor: 'pointer', }} onClick={toggleExpandQuizSection} />
-                                    {
-                                        micronote &&
-                                        <Tag size='lg' variant='solid' colorScheme='yellow' sx={{ marginLeft: '1px', cursor: 'pointer', }} onClick={testDrive}>
-                                            <TagLabel>{expandButtonToggle ? 'Reduce' : 'Expand'}</TagLabel>
-                                            <TagRightIcon w={3} as={ArrowBackIcon} />
-                                            <TagRightIcon w={3} as={ArrowForwardIcon} />
-                                        </Tag>
-                                    }
-                                    {
-                                        themeOrTime === 'theme' ?
-                                            <Tag size='lg' variant='solid' colorScheme='red' sx={{ marginLeft: '1px', cursor: 'pointer', }} onClick={handleTheme}>
-                                                <TagLabel>Order by Theme</TagLabel>
-                                                <TagRightIcon as={DragHandleIcon} />
-                                            </Tag>
-                                            :
-                                            <Tag size='lg' variant='solid' colorScheme='green' sx={{ marginLeft: '1px', marginBottom: '1vh', cursor: 'pointer', }} onClick={handleSort}>
-                                                <TagLabel>Order by Time</TagLabel>
-                                                <TagRightIcon as={TimeIcon} />
-                                            </Tag>
-                                    }
-                                    {/* <Tag size='lg' variant='solid' colorScheme='blue' sx={{ marginLeft: '1px', marginBottom: '1vh', cursor: 'pointer', }} onClick={handleDownload}>
-                                <TagRightIcon as={DownloadIcon} />
-                            </Tag> */}
-                                </div>
-                                {themeOrTime !== 'time' ?
-                                    <DragDropContext onDragEnd={onDragEnd}>
-                                        <Droppable droppableId="droppable">
-                                            {(provided: any) => (
-                                                <div
-                                                    {...provided.droppableProps}
-                                                    ref={provided.innerRef}
-                                                // style={getListStyle(snapshot.isDraggingOver)}
-                                                >
-                                                    {bulletPoints.map((bulletPoint, index) => (
-                                                        <Draggable key={bulletPoint.id} draggableId={bulletPoint.id} index={index}>
-                                                            {(provided: any, snapshot: any) => (
-                                                                <div
-                                                                    ref={provided.innerRef}
-                                                                    {...provided.draggableProps}
-                                                                    {...provided.dragHandleProps}
-                                                                    style={getBulletPointStyle(
-                                                                        snapshot.isDragging,
-                                                                        provided.draggableProps.style
-                                                                    )}
-                                                                    onContextMenu={handleContextMenu}
-                                                                    onMouseDown={(e) => handleMouseDown(e, index)}
-                                                                    onMouseUp={handleMouseUp}
-                                                                >
-                                                                    {
-                                                                        !bulletPoint.editable ?
-                                                                            <BulletPoint
-                                                                                key={index}
-                                                                                index={index}
-                                                                                expand={bulletPoint.expand}
-                                                                                history={bulletPoint.history}
-                                                                                created_at={bulletPoint.created_at}
-                                                                                editPoint={editPoint}
-                                                                                state={bulletPoint.state}
-                                                                                tempString={bulletPoint.tempString}
-                                                                            />
-                                                                            :
-                                                                            <textarea
-                                                                                // type='text'
-                                                                                defaultValue={bulletPoint.history[bulletPoint.expand]}
-                                                                                className='note-input'
-                                                                                onChange={(e) => changeEditPoint(index, e.target.value)}
-                                                                                onKeyDown={event => updateEditPoint(index, event)}
-                                                                                rows={Math.max(Math.ceil(bulletPoint.point.length / 100), 1)}
-                                                                            />
-                                                                    }
-                                                                </div>
-                                                            )}
-                                                        </Draggable>
-                                                    ))}
-                                                    {provided.placeholder}
-                                                </div>
-                                            )}
-                                        </Droppable>
-                                    </DragDropContext>
-                                    :
-                                    <DragDropContext onDragEnd={onDrageEndThemes}>
-                                        <Droppable droppableId="droppable">
-                                            {(provided: any) => (
-                                                <div
-                                                    {...provided.droppableProps}
-                                                    ref={provided.innerRef}
-                                                // style={getListStyle(snapshot.isDraggingOver)}
-                                                >
-                                                    {themes.map((theme: any, index: any) => (
-                                                        <Draggable key={theme['val']} draggableId={theme['val']} index={index}>
-                                                            {(provided: any, snapshot: any) => (
-                                                                <div
-                                                                    ref={provided.innerRef}
-                                                                    {...provided.draggableProps}
-                                                                    {...provided.dragHandleProps}
-                                                                    style={getBulletPointStyle(
-                                                                        snapshot.isDragging,
-                                                                        provided.draggableProps.style
-                                                                    )}
-                                                                    onContextMenu={handleContextMenu}
-                                                                    onMouseDown={(e) => handleMouseDown(e, index)}
-                                                                    onMouseUp={handleMouseUp}
-                                                                >
-                                                                    {theme['type'] === 'topic' ?
-                                                                        !theme['editable'] ?
-                                                                            <h4 style={{ color: '#000', fontWeight: 'bold', }}>
-                                                                                {theme['val']} <EditIcon w={4} color='green.500' style={{ cursor: 'pointer', }} onClick={() => editTheme(index)} />
-                                                                            </h4>
-                                                                            :
-                                                                            <input
-                                                                                type='text'
-                                                                                defaultValue={theme['val']}
-                                                                                onChange={(e) => changeTheme(index, e.target.value)}
-                                                                                onKeyDown={(e) => stopThemeEdit(e, index)}
-                                                                            />
-                                                                        :
-                                                                        <p>{theme['val']}</p>
-                                                                    }
-                                                                </div>
-                                                            )}
-                                                        </Draggable>
-                                                    ))}
-                                                    {provided.placeholder}
-                                                </div>
-                                            )}
-                                        </Droppable>
-                                    </DragDropContext>
-                                }
-                                <input
-                                    type='text'
-                                    placeholder='Write a point...'
-                                    className='note-input'
-                                    value={newPoint}
-                                    onChange={(e) => setNewPoint(e.target.value)}
-                                    onKeyDown={event => handleKeyDown(event)}
-                                />
-                            </GridItem>
-                        </>
-            }
-            {/* Summarization */}
-            <GridItem rowSpan={5} colSpan={4} sx={{ padding: '2px', borderTop: '1px solid #000', overflowY: 'auto', }}>
-                <Tag size='lg' variant='solid' colorScheme='cyan' sx={{ marginLeft: '1px', cursor: 'pointer', }} onClick={noteTranscriptSummary}>
-                    <TagLabel>Summary</TagLabel>
-                    <TagRightIcon as={CalendarIcon} />
-                </Tag>
-                {showSummary &&
-                    (micronote ?
-                        <div style={{ padding: '1vw', }}>{summary_p}</div>
-                        :
-                        <div style={{ padding: '1vw', }}>{summary}</div>)
-                }
-            </GridItem>
-        </Grid>
+                                                        onContextMenu={handleContextMenu}
+                                                        onMouseDown={(e) => handleMouseDown(e, index)}
+                                                        onMouseUp={handleMouseUp}
+                                                    >
+                                                        {theme['type'] === 'topic' ?
+                                                            !theme['editable'] ?
+                                                                <h4 style={{ color: 'var(--text)', fontWeight: 'bold', }}>
+                                                                    {theme['val']} <EditIcon w={4} color='green.500' style={{ cursor: 'pointer', }} onClick={() => editTheme(index)} />
+                                                                </h4>
+                                                                :
+                                                                <input
+                                                                    type='text'
+                                                                    defaultValue={theme['val']}
+                                                                    onChange={(e) => changeTheme(index, e.target.value)}
+                                                                    onKeyDown={(e) => stopThemeEdit(e, index)}
+                                                                />
+                                                            :
+                                                            <p>{theme['val']}</p>
+                                                        }
+                                                    </div>
+                                                )}
+                                            </Draggable>
+                                        ))}
+                                        {provided.placeholder}
+                                    </div>
+                                )}
+                            </Droppable>
+                        </DragDropContext>
+                    }
+                    {bulletPoints.length === 0 && themeOrTime !== 'time' &&
+                        <Text sx={{ fontSize: '14px', color: 'var(--text-dim)', paddingTop: '12px', }}>
+                            No notes yet — type a keypoint below while the lecture plays.
+                        </Text>
+                    }
+                </Box>
+
+                {/* Live transcript */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', width: '340px', flexShrink: 0, borderLeft: '1px solid var(--border)', background: 'var(--surface-alt)', overflow: 'hidden', }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '16px 20px 12px', }}>
+                        <Box as='span' sx={{
+                            width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0,
+                            background: isLink ? 'var(--record)' : 'var(--text-dim)',
+                            animation: isLink ? `${pulseAnimation} 1.4s ease-in-out infinite` : 'none',
+                        }} />
+                        <Text sx={{ fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--text-dim)', }}>
+                            {isLink ? 'Listening…' : 'Live Transcript'}
+                        </Text>
+                    </Box>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '0 20px 20px', overflowY: 'auto', }}>
+                        {transcription.length === 0 ?
+                            <Text sx={{ fontSize: '13px', color: 'var(--text-dim)', paddingTop: '4px', }}>
+                                Transcript will appear here once you start recording.
+                            </Text>
+                            :
+                            [...transcription].sort((a, b) => a.offset - b.offset).slice(-4).reverse().map((line, i) => (
+                                <Box key={i} sx={{
+                                    padding: '10px 12px', borderRadius: '8px', background: 'var(--surface)',
+                                    boxShadow: 'var(--shadow)', opacity: 1 - i * 0.18,
+                                }}>
+                                    <Text sx={{ fontSize: '10.5px', color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', ui-monospace, monospace", marginBottom: '3px', }}>
+                                        {formatElapsed(line.offset)}
+                                    </Text>
+                                    <Text sx={{ fontSize: '13px', lineHeight: '1.5', color: 'var(--text)', }}>
+                                        {line.text}
+                                    </Text>
+                                </Box>
+                            ))
+                        }
+                    </Box>
+                </Box>
+            </Box>
+
+            {/* Input bar */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '16px 28px', borderTop: '1px solid var(--border)', background: 'var(--surface)', flexShrink: 0, }}>
+                <PlusIcon size={16} color='var(--text-dim)' />
+                <input
+                    type='text'
+                    placeholder='Type a keypoint and press Enter...'
+                    className='note-input'
+                    style={{ margin: 0, flex: 1, border: 'none', outline: 'none', background: 'transparent', fontSize: '14.5px', }}
+                    value={newPoint}
+                    onChange={(e) => setNewPoint(e.target.value)}
+                    onKeyDown={event => handleKeyDown(event)}
+                />
+                <Text sx={{ fontSize: '11px', color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', ui-monospace, monospace", }}>↵ Enter</Text>
+            </Box>
+        </Box>
+        </>
     )
 }
 

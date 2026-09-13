@@ -1,10 +1,7 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FormControl,
-  FormHelperText,
   Button,
-  Input,
   Flex,
   Box,
   Heading,
@@ -14,21 +11,12 @@ import { InfoOutlineIcon, WarningTwoIcon } from '@chakra-ui/icons'
 import { Typewriter } from 'react-simple-typewriter'
 
 const Home = () => {
-  const [gptKey, setGptKey] = useState<string>('')
-  const [errorMsg, setErrorMsg] = useState<string>('')
-
   const navigate = useNavigate()
 
   const handleSubmit = (e: any) => {
     e.preventDefault()
-    console.log(gptKey)
-    if(gptKey === ''){
-      setErrorMsg('No GPT key provided...')
-    }else{
-      localStorage.setItem('gptKey', JSON.stringify(gptKey))
-      setErrorMsg('')
-      navigate('/note')
-    }
+    localStorage.setItem('gptKey', JSON.stringify('ollama'))
+    navigate('/note')
   }
   
   return (
@@ -62,34 +50,22 @@ const Home = () => {
         <Box my={4} textAlign='center'>
           <form>
             <FormControl>
-              <Input 
-                type='text'
-                placeholder='Enter your GPT4 key'
-                onChange={(e) => setGptKey(e.target.value)}
-              />
-              {errorMsg !== '' &&
-                <FormHelperText
-                  style={{ color: 'red', fontWeight: 'bold', }}
-                >
-                  {errorMsg}
-                </FormHelperText>
-              }
+              <Button
+                width='half'
+                type='submit'
+                mt={4}
+                colorScheme='teal'
+                variant='outline'
+                onClick={handleSubmit}
+              >
+                Continue
+              </Button>
             </FormControl>
-            <Button
-              width='half'
-              type='submit'
-              mt={4}
-              colorScheme='teal'
-              variant='outline'
-              onClick={handleSubmit}
-            >
-              Submit
-            </Button>
           </form>
         </Box>
         <Box textAlign='left'>
           <Text fontSize='xs' color='grey' as='em'>
-            <InfoOutlineIcon /> The GPT4 key you provide will be used for the expansion of micronotes, theme generation, cue questions, and summarization. Be careful to provide the correct key!
+            <InfoOutlineIcon /> Notes are expanded and summarized using a self-hosted local model — nothing leaves this machine.
           </Text>
         </Box>
       </Box>

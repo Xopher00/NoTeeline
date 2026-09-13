@@ -13,6 +13,10 @@ async def transcribe(file: UploadFile = File(...)):
     try:
         segments, _ = model.transcribe(tmp_path)
         result = [{"text": seg.text, "start": seg.start, "duration": seg.end - seg.start} for seg in segments]
+    except Exception:
+        # a trailing/truncated chunk (e.g. the final one on stop()) can be an
+        # unparseable partial webm container - treat it as silence, not an error
+        result = []
     finally:
         os.remove(tmp_path)
     return result

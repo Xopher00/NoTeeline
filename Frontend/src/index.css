@@ -19,6 +19,25 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
+
+  --bg: #FBF6EE;
+  --surface: #FFFFFF;
+  --surface-alt: #F5EEE0;
+  --sidebar-bg: #4A3B27;
+  --sidebar-item: #5E4C34;
+  --sidebar-item-active: #7A6440;
+  --sidebar-text: #F1E7D6;
+  --sidebar-text-dim: #C9B999;
+  --text: #22190F;
+  --text-dim: #6B5F4D;
+  --border: rgba(34, 25, 15, 0.10);
+  --record: #C43B3B;
+  --record-dim: #E9D3D3;
+  --accent: #6E8A5E;
+  --accent-dim: #E4EADD;
+  --highlight-bg: #FCEFC6;
+  --highlight-border: #E8C766;
+  --shadow: 0 1px 2px rgba(34,25,15,0.06), 0 8px 24px rgba(34,25,15,0.06);
 }
 
 .expandable-section {
@@ -92,12 +111,13 @@
 .note-content {
   position: fixed;
   top: 0;
-  /*left: 19%;*/
-  width: 81%;
+  left: 248px;
+  width: calc(100% - 248px);
   height: 100%;
   text-align: left;
   overflow-y: auto;
   padding-left: 1%;
+  box-sizing: border-box;
 }
 
 // BEGIN: scrollbar-style
@@ -122,23 +142,6 @@
 .onboarding-ui {
   width: 100%;
   padding: 10px;
-}
-
-.note-title {
-  display: inline-block;
-  padding: 1%;
-  margin-top: 1vh;
-  margin-bottom: 3vh;
-  /* border: 1px solid tomato; */
-}
-
-.note-title-edit {
-  visibility: hidden;
-}
-
-.note-title:hover .note-title-edit {
-  visibility: visible;
-  cursor: pointer;
 }
 
 .bullet-point {

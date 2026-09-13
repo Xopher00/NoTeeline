@@ -64,7 +64,8 @@ const BulletPoint = ({index, expand, history, created_at, editPoint, state, temp
             className='bullet-point'
             onContextMenu={handleContextMenu}
         >
-            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#3D57FF', }}>{formatCreateTime(created_at)}</span> {pointToShow}
+            <span style={{ fontFamily: "'JetBrains Mono', ui-monospace, monospace", fontSize: '11px', color: 'var(--text-dim)', display: 'inline-block', width: '44px', verticalAlign: 'top', }}>{formatCreateTime(created_at)}</span>
+            <span style={{ fontSize: '14.5px', lineHeight: '1.55', }}>{pointToShow}</span>
             <EditIcon
                 className='bullet-point-cross' 
                 w={4}

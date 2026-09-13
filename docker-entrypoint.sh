@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+export OLLAMA_HOST=0.0.0.0:11434
 ollama serve &
 OLLAMA_PID=$!
 
