@@ -2,9 +2,9 @@ import OpenAI from 'openai'
 import { NotePoint, TranscriptLine, OnboardingSection } from "../state/noteStore"
 
 const SEED = 1
-const WINDOW_SIZE = 20000 //20000ms
+const WINDOW_SIZE = 20 //20s
 const OPEN_AI_KEY = JSON.parse(localStorage.getItem('gptKey'))
-export const openai = new OpenAI({ apiKey: OPEN_AI_KEY, dangerouslyAllowBrowser: true })
+export const openai = new OpenAI({ apiKey: 'ollama', baseURL: 'http://localhost:11434/v1', dangerouslyAllowBrowser: true })
 
 export type GPTRequest = {
     point: string;
@@ -16,7 +16,7 @@ export const expandPoint = (point: NotePoint, transcript: TranscriptLine[]) => {
     for(var i = 0; i < transcript.length; i++) {
         let tr_offset = transcript[i].offset
         let tr_end = transcript[i].offset + transcript[i].duration
-        let right = point.created_at*1000.0 //converting to ms to match transcript time
+        let right = point.created_at //transcript offsets are already in seconds
         let left = right - WINDOW_SIZE
 
         //there is partial or full overlapping between point and transcript
@@ -31,7 +31,7 @@ export const expandPoint = (point: NotePoint, transcript: TranscriptLine[]) => {
 // returns points with fraction transcript
 export const expandPointWithTranscript = (point: NotePoint, transcript: TranscriptLine[]) => {
     let expandedPoint = { point: point.point, transcript: [] as string[] }
-    const limit = point.created_at * 1000.0
+    const limit = point.created_at
     for(var i = 0; i < transcript.length; i++){
         const tr_start = transcript[i].offset
 
@@ -95,14 +95,13 @@ export const genResponses = async (points: {point: string, history: string[], ex
                 "Keypoint: "+expandedPoint.point+"\n"+
                 "Note:"
 
-          const res = await fetch('https://api.openai.com/v1/chat/completions', {
+          const res = await fetch('http://localhost:11434/v1/chat/completions', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${OPEN_AI_KEY}`,
             },
             body: JSON.stringify({
-              model: 'gpt-4-1106-preview',
+              model: 'llama3.1:8b',
               messages: [{ role: 'system', content: promptString}, { role: 'user', content: PROMPT }],
               stream: true,
               temperature: 0.5,
@@ -171,7 +170,7 @@ export const callGPT = async (points: {point: string, history: string[], expand:
 
             const res = await openai.chat.completions.create({
                 messages: [{ role: "system", content: promptString }, { role: "user", content: PROMPT }],
-                model: "gpt-4-1106-preview",
+                model: "llama3.1:8b",
                 temperature: 0.5,
             })
 
@@ -195,7 +194,7 @@ export const callGPTForSinglePoint = async (point: NotePoint, transcription: Tra
 
     const res = await openai.chat.completions.create({
         messages: [{ role: "system", content: promptString }, { role: "user", content: PROMPT }],
-        model: "gpt-4-1106-preview",
+        model: "llama3.1:8b",
         seed: SEED,
         temperature: 0.5,
     })
@@ -213,7 +212,7 @@ export const generatepointsummary = async (points: string, context: string) => {
     Do not mark the sentences with 1,2 etc.`
     const res = await openai.chat.completions.create({
         messages: [{ role: "user", content: user_prompt }],
-        model: "gpt-4-0125-preview",
+        model: "llama3.1:8b",
         seed: SEED,
         temperature: 0.5,
     })
@@ -221,7 +220,7 @@ export const generatepointsummary = async (points: string, context: string) => {
     return res.choices[0].message.content || ""
 }
 
-// ToDo: pass the summary here, *the response from fetch('https://noteeline-backend.onrender.com/youtube-transcript' or handleSummary()*
+// ToDo: pass the summary here, *the response from the /transcribe-chunk backend call or handleSummary()*
 export const generateQuiz = async (points: string[], summary: string) => {
     const system_prompt = 'Given a topic description, Your task is to generate five multichoice question with answer.  ' + 
                           'Please mark the question within <Question></Question> tags,  ' + 
@@ -249,7 +248,7 @@ export const generateQuiz = async (points: string[], summary: string) => {
     const res = await openai.chat.completions.create({
         messages: [{ role: "system", content: system_prompt },
                     { role: "user", content: user_prompt }],
-        model: "gpt-4-0125-preview",
+        model: "llama3.1:8b",
         seed: SEED,
         temperature: 0.5,
     })
@@ -295,7 +294,7 @@ export const generateTheme = async (expandedPoints: string[]) => {
     
     const res = await openai.chat.completions.create({
         messages: [{ role: "user", content: prompt }],
-        model: "gpt-4-0125-preview",
+        model: "llama3.1:8b",
         seed: SEED,
         temperature: 0.5,
     })

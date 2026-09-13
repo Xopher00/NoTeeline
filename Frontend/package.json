@@ -30,7 +30,6 @@
     "react-router-dom": "^6.22.3",
     "react-simple-typewriter": "^5.0.1",
     "react-spinners": "^0.13.8",
-    "react-youtube": "^10.1.0",
     "youtube-transcript": "^1.0.6",
     "zustand": "^4.4.5"
   },

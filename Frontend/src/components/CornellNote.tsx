@@ -13,7 +13,6 @@ import {
     ArrowForwardIcon,
     EditIcon,
 } from '@chakra-ui/icons'
-import YouTube from 'react-youtube'
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd"
 
 import { NotePoint, TranscriptLine, useNoteStore, Note_t } from '../state/noteStore'
@@ -60,8 +59,6 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
     const [bulletPoints, setBulletPoints] = useState<bulletObject[]>([])
     const [newPoint, setNewPoint] = useState<string>('')
     const [newTitle, setNewTitle] = useState<string>('')
-    const [ytLink, setYtLink] = useState<string>('')
-    const [embedId, setEmbedId] = useState<string>('')
     const [isLink, setIsLink] = useState<boolean>(false)
     const [transcription, setTranscription] = useState<TranscriptLine[]>([]) //yt transcription
     const [playerTime, setPlayerTime] = useState<number>(0) //time of the yt player at any instant
@@ -81,14 +78,6 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
     const [quizInfo, setQuizInfo] = useState<any>(null)
     const [themes, setThemes] = useState<any>([])
     const [pauseCount, setPauseCount] = useState<number>(0)
-    const [opts, setOpts] = useState<any>({
-        height: '400',
-        width: '80%',
-        frameborder: '0',
-        playerVars: { autoplay: 0, },
-    })
-
-    const ref = useRef(null)
     const toast = useToast()
     let timeoutHandle: any
 
@@ -122,14 +111,13 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
                             "Keypoint: " + expandedPoint.point + "\n" +
                             "Note:"
 
-                        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                        const res = await fetch('http://localhost:11434/v1/chat/completions', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                Authorization: `Bearer ${OPEN_AI_KEY}`,
                             },
                             body: JSON.stringify({
-                                model: 'gpt-4-turbo',
+                                model: 'llama3.1:8b',
                                 messages: [{ role: 'system', content: promptString }, { role: 'user', content: PROMPT }],
                                 stream: true,
                                 seed: 1,
@@ -245,8 +233,6 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
     useEffect(() => {
         console.log(window.innerWidth, window.innerHeight)
         const iw = window.innerWidth
-
-        setOpts((prev: any) => ({...prev, height: 0.4559 * window.innerHeight, width: 0.5 * window.innerWidth, }))
 
         setNewTitle(name)
         setMicronote(note.micronote)
@@ -401,89 +387,53 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
         }
     }
 
-    const getYoutubeTranscription = (youtubeId: string = '') => {
-        console.log(`youtubeid: ${youtubeId}`)
-        let ytId = youtubeId
-        if (ytLink.includes('watch')) {
-            ytId = ytLink.split('v=')[1]
-            setEmbedId(ytId)
+    let recordingStartMs = 0
+
+    const startLectureRecording = () => {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
             setIsLink(true)
-        } else if (ytLink.includes('youtu.be')) {
-            ytId = ytLink.split('/')[3].split('?')[0]
-            setEmbedId(ytId)
-            setIsLink(true)
-        } else if (ytId === '') {
-            alert('Invalid YouTube link!')
-            // return
-        }
+            recordingStartMs = Date.now()
+            const mediaRecorder = new MediaRecorder(stream)
 
-        if (youtubeId === '') addYouTubeId(name, ytId)
+            mediaRecorder.ondataavailable = (event: BlobEvent) => {
+                if (event.data.size === 0) return
+                const formData = new FormData()
+                formData.append('audio', event.data, 'chunk.webm')
 
-        fetch('https://noteeline-backend.onrender.com/youtube-transcript', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                ytLink: `https://www.youtube.com/watch?v=${ytId}`,
-            }),
-        }).then(res => res.json()).then(d => {
-            console.log(d) //each transctiption => {start, duration, text}
-            if (!d) {
-                toast({
-                    title: 'Warning',
-                    description: 'The provided YouTube video does not have a transcription or has it disabled!',
-                    status: 'warning',
-                    duration: 5000,
-                    isClosable: true,
-                })
-            } else {
-                const resp: { text: string, start: number, duration: number }[] = d
-                const response = Array.isArray(resp) ? resp.map(({ text, start, duration }) => ({
-                    text,
-                    offset: start,
-                    duration
-                })) : []
-                const response2 = d.map(({ text, start, duration }) => ({
-                    text,
-                    offset: start,
-                    duration
-                }))
-
-                console.log ( response )
-                console.log ( response2 )
-                
-                addTranscription(name, response)
-                setTranscription(response)
-
-                //generating summary from transcript
-                let tr = ''
-                const res_tr = response
-                for (let i = 0; i < res_tr.length; i++) {
-                    tr += res_tr[i].text
-                }
-
-                //http://localhost:3000/fetch-summary
-                fetch('https://noteeline-backend.onrender.com/fetch-summary', {
+                fetch('http://localhost:4000/transcribe-chunk', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        transcript: tr
-                    }),
-                }).then(res => res.json()).then(data => {
-                    console.log('Summary from transcription:')
-                    console.log(data)
-                    setSummary(data.response)
-                    addSummary(newTitle, data.response)
-                }).catch(e => console.log(e))
+                    body: formData,
+                }).then(res => res.json()).then(segments => {
+                    const elapsedOffset = (Date.now() - recordingStartMs) / 1000 - 10
+                    const response = segments.map((seg: { text: string, start: number, duration: number }) => ({
+                        text: seg.text,
+                        offset: elapsedOffset + seg.start,
+                        duration: seg.duration,
+                    }))
+                    setTranscription(prev => {
+                        const updated = [...prev, ...response]
+                        addTranscription(name, updated)
+                        return updated
+                    })
+                }).catch(err => {
+                    console.log(err)
+                    toast({
+                        title: 'Error',
+                        description: 'Error transcribing lecture audio chunk!',
+                        status: 'error',
+                        duration: 5000,
+                        isClosable: true,
+                    })
+                })
             }
+
+            mediaRecorder.start(10000)
+            loop({ target: null })
         }).catch(err => {
             console.log(err)
             toast({
                 title: 'Error',
-                description: 'Error in transcribing your YouTube video!',
+                description: 'Could not access the microphone!',
                 status: 'error',
                 duration: 5000,
                 isClosable: true,
@@ -492,23 +442,8 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
     }
 
     const handleVideoStateChange = (e: any) => {
-        const time = e.target.getCurrentTime() // time: number
-        const playerState = e.target.getPlayerState() //playerState: number
-
-        if (playerState === 1) {
-            setPlayerTime(time)
-            const D = time - previousTime
-            previousTime = time
-            const epsilon = 2
-            if (Math.abs(D) > epsilon) {
-                if (D > 0) {
-                    forwardCount += 1
-                }
-                else {
-                    reverseCount += 1
-                }
-            }
-        }
+        const time = (Date.now() - recordingStartMs) / 1000
+        setPlayerTime(time)
         timeoutHandle = window.setTimeout(() => handleVideoStateChange(e), 1000)
     }
 
@@ -807,7 +742,7 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
 
         const res = await openai.chat.completions.create({
             messages: [{ role: "system", content: PROMPT }],
-            model: "gpt-3.5-turbo",
+            model: "llama3.1:8b",
             stream: true,
             // seed: SEED,
             temperature: 0.2,
@@ -1093,20 +1028,11 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
             tr += transcription[i].text
         }
 
-        //http://localhost:3000/fetch-summary
-        fetch('https://noteeline-backend.onrender.com/fetch-summary', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                transcript: tr
-            }),
-        }).then(res => res.json()).then(data => {
+        generatepointsummary(tr, '').then(res => {
             console.log('Summary:')
-            console.log(data)
-            setSummary(data.response)
-            addSummary(newTitle, data.response)
+            console.log(res)
+            setSummary(res)
+            addSummary(newTitle, res)
         }).catch(e => console.log(e))
     }
 
@@ -1170,7 +1096,7 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
         })
 
         const obj = fetchButtonStats(newTitle)
-        const url = isLink ? `www.youtube.com/watch?v=${embedId}` : ''
+        const url = isLink ? 'local-lecture-recording' : ''
         let userLog: any = {
             buttonStats: obj,
             pauseCount: pauseCount,
@@ -1212,31 +1138,21 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
             <GridItem rowSpan={6} colSpan={4} sx={{ borderBottom: '1px solid #000', }}>
                 {
                     !isLink ?
-                        <InputGroup
-                            style={{ marginBottom: '5vh', width: '50%', marginLeft: '25%', marginTop: '1%', }}
+                        <Button
+                            style={{ marginBottom: '5vh', marginLeft: '25%', marginTop: '1%', }}
+                            colorScheme='red'
+                            onClick={startLectureRecording}
                         >
-                            <Input
-                                placeholder='Enter a YouTube link...'
-                                style={{ background: 'white', }}
-                                onChange={(e: { target: { value: React.SetStateAction<string> } }) => setYtLink(e.target.value)}
-                            />
-                            <InputRightElement width='4.5rem' style={{ padding: '0.5vw', }}>
-                                <Button h='1.75rem' size='sm' color='white' colorScheme='red' onClick={() => getYoutubeTranscription('')}>
-                                    Submit
-                                </Button>
-                            </InputRightElement>
-                        </InputGroup>
+                            Start Recording Lecture
+                        </Button>
                         :
-                        <YouTube
-                            ref={ref}
-                            opts={opts}
-                            videoId={embedId}
-                            onReady={loop}
-                            onPlay={() => setPause(false)}
-                            onPause={countPause}
-                            onEnd={stopVideo}
-                            style={{ marginTop: '0%', marginLeft: '15%', }}
-                        />
+                        <Button
+                            style={{ marginBottom: '5vh', marginLeft: '25%', marginTop: '1%', }}
+                            colorScheme='gray'
+                            onClick={stopVideo}
+                        >
+                            Stop Recording
+                        </Button>
                 }
             </GridItem>
             {
