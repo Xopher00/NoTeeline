@@ -7,7 +7,7 @@ import {
   Heading,
   Text,
 } from '@chakra-ui/react'
-import { InfoOutlineIcon, WarningTwoIcon } from '@chakra-ui/icons'
+import { InfoOutlineIcon } from '@chakra-ui/icons'
 import { Typewriter } from 'react-simple-typewriter'
 
 const Home = () => {
@@ -69,9 +69,6 @@ const Home = () => {
           </Text>
         </Box>
       </Box>
-      <Text fontSize='xs' color='#54432C' as='b'>
-        <WarningTwoIcon /> The website might not always be up and running
-      </Text>
     </Flex>
    )
 }

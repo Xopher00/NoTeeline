@@ -731,7 +731,7 @@ const CornellNote: React.FC<NoteProps> = ({ name, note }) => {
                     isClosable: true,
                 })
             }
-        }).catch(() => alert('Error calling GPT-4...'))
+        }).catch(() => alert('Error calling the local model...'))
     }
 
     const callGPTForSinglePointFromComponent = async (point: NotePoint, transcription: TranscriptLine[], index: number) => {
